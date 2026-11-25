@@ -1,0 +1,15 @@
+{
+  "name": "Mutant #556",
+  "description": "Mutant (MTNT) — a mutated creature NFT collection on Robinhood Chain. 1 of 1000.",
+  "image": "ipfs://bafkreiapatznzctdno5opymjuadyjrbdlyx6kef2vgpyb7zmbnnb3kr6je",
+  "attributes": [
+    {
+      "trait_type": "Species",
+      "value": "Mutant"
+    },
+    {
+      "trait_type": "Edition",
+      "value": "556 of 1000"
+    }
+  ]
+}
