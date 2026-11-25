@@ -3,10 +3,11 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Mutant (MTNT) — Aktivasi Mint</title>
+<title>Mutant (MTNT) — Aktivasi Mint + Metadata Drop</title>
 <style>
   body { font-family: system-ui, sans-serif; background:#0d1117; color:#e6edf3; margin:0; padding:20px; }
   h1 { font-size:20px; margin:0 0 4px; }
+  h2 { font-size:16px; margin:0 0 8px; }
   .sub { color:#8b949e; font-size:13px; margin-bottom:16px; word-break:break-all; }
   .card { background:#161b22; border:1px solid #30363d; border-radius:12px; padding:16px; margin-bottom:14px; }
   button { display:block; width:100%; padding:16px; font-size:17px; font-weight:600; border:0; border-radius:10px; margin:10px 0; background:#1f6feb; color:#fff; }
@@ -20,49 +21,74 @@
 </style>
 </head>
 <body>
-<h1>Mutant (MTNT) — Aktivasi Mint</h1>
-<div class="sub">Kontrak: 0x19616542ce73a57167C3a0Da51Be240f193C50E0<br>Jaringan: Robinhood Chain (4663)</div>
-
-<div class="card">
-  <div id="netStatus" class="status">Memeriksa status kontrak…</div>
-</div>
+<h1>Mutant (MTNT) — Panel Pemilik</h1>
+<div class="sub">Jaringan: Robinhood Chain (4663)<br>Alamat metadata: <code>https://lampardkarunia.github.io/mutant-metadata/</code></div>
 
 <div class="card">
   <button id="btnConnect">Hubungkan Wallet</button>
   <div id="walletInfo" class="status"></div>
+</div>
+
+<div class="card">
+  <h2>Drop OpenSea (SeaDrop) — yang sedang dijual</h2>
+  <div class="sub">Kontrak: 0xAF276214bF5e7098E1d50c62C35970bc9bd26424</div>
+  <div id="dropStatus" class="status">Memeriksa metadata Drop…</div>
+  <button id="btnDropBase" class="green" disabled>Pasang Metadata Drop</button>
+  <div id="dropTx" class="status"></div>
+</div>
+
+<div class="card">
+  <h2>Kontrak custom (lama)</h2>
+  <div class="sub">Kontrak: 0x19616542ce73a57167C3a0Da51Be240f193C50E0</div>
+  <div id="netStatus" class="status">Memeriksa status kontrak…</div>
   <button id="btnBase" class="green" disabled>1. Pasang Alamat Metadata</button>
   <button id="btnOpen" class="green" disabled>2. Buka Mint (Gratis)</button>
   <div id="txStatus" class="status"></div>
 </div>
 
-<div class="sub">Alamat metadata yang dipasang:<br><code>https://lampardkarunia.github.io/mutant-metadata/</code></div>
-
 <script src="https://cdn.jsdelivr.net/npm/ethers@6.13.4/dist/ethers.umd.min.js"></script>
 <script>
-const CONTRACT = "0x19616542ce73a57167C3a0Da51Be240f193C50E0";
+const CUSTOM   = "0x19616542ce73a57167C3a0Da51Be240f193C50E0";
+const DROP     = "0xAF276214bF5e7098E1d50c62C35970bc9bd26424";
 const OWNER    = "0x41b495910a16e7057098f74c571b2d5fc19c1d6e";
 const BASE_URI = "https://lampardkarunia.github.io/mutant-metadata/";
 const CHAIN_ID = "0x1237"; // 4663
 const RPC      = "https://rpc.mainnet.chain.robinhood.com";
-const ABI = [
+const ABI_CUSTOM = [
   "function owner() view returns (address)",
   "function mintOpen() view returns (bool)",
   "function setBaseURI(string newBaseURI)",
   "function setMintOpen(bool open)"
 ];
+const ABI_DROP = [
+  "function tokenURI(uint256 tokenId) view returns (string)",
+  "function setBaseURI(string newBaseURI)"
+];
 const $ = id => document.getElementById(id);
-let signer = null, contract = null;
+let signer = null, custom = null, drop = null;
 
-async function refreshStatus() {
+async function refreshCustom() {
   try {
-    const ro = new ethers.Contract(CONTRACT, ABI, new ethers.JsonRpcProvider(RPC));
+    const ro = new ethers.Contract(CUSTOM, ABI_CUSTOM, new ethers.JsonRpcProvider(RPC));
     const open = await ro.mintOpen();
-    $("netStatus").innerHTML = "Status mint saat ini: " +
+    $("netStatus").innerHTML = "Status mint kontrak custom: " +
       (open ? '<span class="ok"><b>SUDAH BUKA</b></span>' : '<span class="warn"><b>BELUM BUKA</b></span>');
-    return open;
   } catch (e) {
-    $("netStatus").innerHTML = '<span class="err">Gagal membaca status kontrak. Cek koneksi internet lalu muat ulang halaman.</span>';
-    return null;
+    $("netStatus").innerHTML = '<span class="err">Gagal membaca status kontrak custom.</span>';
+  }
+}
+
+async function refreshDrop() {
+  try {
+    const ro = new ethers.Contract(DROP, ABI_DROP, new ethers.JsonRpcProvider(RPC));
+    const uri = await ro.tokenURI(1);
+    if (uri && uri.length > 0) {
+      $("dropStatus").innerHTML = '<span class="ok"><b>Metadata Drop SUDAH TERPASANG ✔</b></span>\ntokenURI(1): ' + uri;
+    } else {
+      $("dropStatus").innerHTML = '<span class="warn"><b>Metadata Drop BELUM terpasang.</b></span>\nKetuk tombol hijau di bawah untuk memasangnya.';
+    }
+  } catch (e) {
+    $("dropStatus").innerHTML = '<span class="err">Gagal membaca status Drop. Cek koneksi lalu muat ulang halaman.</span>';
   }
 }
 
@@ -95,37 +121,41 @@ $("btnConnect").onclick = async () => {
     await provider.send("eth_requestAccounts", []);
     signer = await provider.getSigner();
     const addr = await signer.getAddress();
-    contract = new ethers.Contract(CONTRACT, ABI, signer);
+    custom = new ethers.Contract(CUSTOM, ABI_CUSTOM, signer);
+    drop = new ethers.Contract(DROP, ABI_DROP, signer);
     if (addr.toLowerCase() === OWNER) {
       info.innerHTML = '<span class="ok">Terhubung sebagai wallet pemilik ✔</span>\n' + addr;
       $("btnBase").disabled = false;
       $("btnOpen").disabled = false;
+      $("btnDropBase").disabled = false;
     } else {
-      info.innerHTML = '<span class="err">Terhubung: ' + addr + '\nIni BUKAN wallet pemilik kontrak. Ganti akun di Bitget Wallet ke alamat pemilik (0x41B4…1D6e), lalu ketuk Hubungkan Wallet lagi.</span>';
+      info.innerHTML = '<span class="err">Terhubung: ' + addr + '\nIni BUKAN wallet pemilik. Ganti akun di Bitget Wallet ke alamat pemilik (0x41B4…1D6e), lalu ketuk Hubungkan Wallet lagi.</span>';
     }
   } catch (e) {
     info.innerHTML = '<span class="err">Gagal menghubungkan: ' + (e.shortMessage || e.message) + '</span>';
   }
 };
 
-async function runTx(label, fn) {
-  const st = $("txStatus");
+async function runTx(statusId, label, fn, after) {
+  const st = $(statusId);
   try {
     st.textContent = label + " — silakan konfirmasi di Bitget Wallet…";
     const tx = await fn();
     st.textContent = label + " — transaksi terkirim, menunggu selesai…\nTx: " + tx.hash;
     await tx.wait();
     st.innerHTML = '<span class="ok">' + label + " — BERHASIL ✔</span>\nTx: " + tx.hash;
-    refreshStatus();
+    if (after) after();
   } catch (e) {
     st.innerHTML = '<span class="err">' + label + " — gagal/dibatalkan: " + (e.shortMessage || e.message) + '</span>';
   }
 }
 
-$("btnBase").onclick = () => runTx("Pasang alamat metadata", () => contract.setBaseURI(BASE_URI));
-$("btnOpen").onclick = () => runTx("Buka mint", () => contract.setMintOpen(true));
+$("btnBase").onclick = () => runTx("txStatus", "Pasang alamat metadata (custom)", () => custom.setBaseURI(BASE_URI), refreshCustom);
+$("btnOpen").onclick = () => runTx("txStatus", "Buka mint (custom)", () => custom.setMintOpen(true), refreshCustom);
+$("btnDropBase").onclick = () => runTx("dropTx", "Pasang metadata Drop", () => drop.setBaseURI(BASE_URI), refreshDrop);
 
-refreshStatus();
+refreshCustom();
+refreshDrop();
 </script>
 </body>
 </html>
