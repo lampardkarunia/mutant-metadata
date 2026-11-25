@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mutant (MTNT) — Aktivasi Mint</title>
+<style>
+  body { font-family: system-ui, sans-serif; background:#0d1117; color:#e6edf3; margin:0; padding:20px; }
+  h1 { font-size:20px; margin:0 0 4px; }
+  .sub { color:#8b949e; font-size:13px; margin-bottom:16px; word-break:break-all; }
+  .card { background:#161b22; border:1px solid #30363d; border-radius:12px; padding:16px; margin-bottom:14px; }
+  button { display:block; width:100%; padding:16px; font-size:17px; font-weight:600; border:0; border-radius:10px; margin:10px 0; background:#1f6feb; color:#fff; }
+  button:disabled { background:#30363d; color:#8b949e; }
+  button.green { background:#238636; }
+  .status { white-space:pre-wrap; font-size:14px; line-height:1.5; min-height:44px; }
+  .warn { color:#f0b429; }
+  .ok { color:#3fb950; }
+  .err { color:#f85149; }
+  code { word-break:break-all; font-size:12px; color:#8b949e; }
+</style>
+</head>
+<body>
+<h1>Mutant (MTNT) — Aktivasi Mint</h1>
+<div class="sub">Kontrak: 0x19616542ce73a57167C3a0Da51Be240f193C50E0<br>Jaringan: Robinhood Chain (4663)</div>
+
+<div class="card">
+  <div id="netStatus" class="status">Memeriksa status kontrak…</div>
+</div>
+
+<div class="card">
+  <button id="btnConnect">Hubungkan Wallet</button>
+  <div id="walletInfo" class="status"></div>
+  <button id="btnBase" class="green" disabled>1. Pasang Alamat Metadata</button>
+  <button id="btnOpen" class="green" disabled>2. Buka Mint (Gratis)</button>
+  <div id="txStatus" class="status"></div>
+</div>
+
+<div class="sub">Alamat metadata yang dipasang:<br><code>https://lampardkarunia.github.io/mutant-metadata/</code></div>
+
+<script src="https://cdn.jsdelivr.net/npm/ethers@6.13.4/dist/ethers.umd.min.js"></script>
+<script>
+const CONTRACT = "0x19616542ce73a57167C3a0Da51Be240f193C50E0";
+const OWNER    = "0x41b495910a16e7057098f74c571b2d5fc19c1d6e";
+const BASE_URI = "https://lampardkarunia.github.io/mutant-metadata/";
+const CHAIN_ID = "0x1237"; // 4663
+const RPC      = "https://rpc.mainnet.chain.robinhood.com";
+const ABI = [
+  "function owner() view returns (address)",
+  "function mintOpen() view returns (bool)",
+  "function setBaseURI(string newBaseURI)",
+  "function setMintOpen(bool open)"
+];
+const $ = id => document.getElementById(id);
+let signer = null, contract = null;
+
+async function refreshStatus() {
+  try {
+    const ro = new ethers.Contract(CONTRACT, ABI, new ethers.JsonRpcProvider(RPC));
+    const open = await ro.mintOpen();
+    $("netStatus").innerHTML = "Status mint saat ini: " +
+      (open ? '<span class="ok"><b>SUDAH BUKA</b></span>' : '<span class="warn"><b>BELUM BUKA</b></span>');
+    return open;
+  } catch (e) {
+    $("netStatus").innerHTML = '<span class="err">Gagal membaca status kontrak. Cek koneksi internet lalu muat ulang halaman.</span>';
+    return null;
+  }
+}
+
+async function ensureChain() {
+  const cur = await window.ethereum.request({ method: "eth_chainId" });
+  if (cur === CHAIN_ID) return;
+  try {
+    await window.ethereum.request({ method: "wallet_switchEthereumChain", params: [{ chainId: CHAIN_ID }] });
+  } catch (e) {
+    if (e.code === 4902 || (e.data && e.data.originalError && e.data.originalError.code === 4902)) {
+      await window.ethereum.request({ method: "wallet_addEthereumChain", params: [{
+        chainId: CHAIN_ID, chainName: "Robinhood Chain",
+        nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 },
+        rpcUrls: [RPC]
+      }]});
+    } else { throw e; }
+  }
+}
+
+$("btnConnect").onclick = async () => {
+  const info = $("walletInfo");
+  if (!window.ethereum) {
+    info.innerHTML = '<span class="err">Wallet tidak terdeteksi. Buka halaman ini dari browser di dalam aplikasi Bitget Wallet (menu Discover / DApps), bukan dari Chrome biasa.</span>';
+    return;
+  }
+  try {
+    info.textContent = "Menghubungkan…";
+    await ensureChain();
+    const provider = new ethers.BrowserProvider(window.ethereum);
+    await provider.send("eth_requestAccounts", []);
+    signer = await provider.getSigner();
+    const addr = await signer.getAddress();
+    contract = new ethers.Contract(CONTRACT, ABI, signer);
+    if (addr.toLowerCase() === OWNER) {
+      info.innerHTML = '<span class="ok">Terhubung sebagai wallet pemilik ✔</span>\n' + addr;
+      $("btnBase").disabled = false;
+      $("btnOpen").disabled = false;
+    } else {
+      info.innerHTML = '<span class="err">Terhubung: ' + addr + '\nIni BUKAN wallet pemilik kontrak. Ganti akun di Bitget Wallet ke alamat pemilik (0x41B4…1D6e), lalu ketuk Hubungkan Wallet lagi.</span>';
+    }
+  } catch (e) {
+    info.innerHTML = '<span class="err">Gagal menghubungkan: ' + (e.shortMessage || e.message) + '</span>';
+  }
+};
+
+async function runTx(label, fn) {
+  const st = $("txStatus");
+  try {
+    st.textContent = label + " — silakan konfirmasi di Bitget Wallet…";
+    const tx = await fn();
+    st.textContent = label + " — transaksi terkirim, menunggu selesai…\nTx: " + tx.hash;
+    await tx.wait();
+    st.innerHTML = '<span class="ok">' + label + " — BERHASIL ✔</span>\nTx: " + tx.hash;
+    refreshStatus();
+  } catch (e) {
+    st.innerHTML = '<span class="err">' + label + " — gagal/dibatalkan: " + (e.shortMessage || e.message) + '</span>';
+  }
+}
+
+$("btnBase").onclick = () => runTx("Pasang alamat metadata", () => contract.setBaseURI(BASE_URI));
+$("btnOpen").onclick = () => runTx("Buka mint", () => contract.setMintOpen(true));
+
+refreshStatus();
+</script>
+</body>
+</html>
